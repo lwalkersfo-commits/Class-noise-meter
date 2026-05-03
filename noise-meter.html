@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Classroom Noise Meter</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0f12;
+    --panel: #13161b;
+    --border: #1e232b;
+    --text: #e8eaf0;
+    --muted: #4a5060;
+    --green: #22c55e;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --green-dim: #14532d;
+    --amber-dim: #78350f;
+    --red-dim: #7f1d1d;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 520px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 14px;
+  }
+
+  .title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.2rem;
+    letter-spacing: 0.08em;
+    color: var(--text);
+  }
+
+  .status-pill {
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--muted);
+    color: var(--muted);
+    text-transform: uppercase;
+    transition: all 0.3s ease;
+  }
+  .status-pill.active { border-color: var(--green); color: var(--green); }
+  .status-pill.error { border-color: var(--red); color: var(--red); }
+
+  /* Big colour zone */
+  .zone-display {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 24px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    position: relative;
+    overflow: hidden;
+    transition: box-shadow 0.4s ease;
+  }
+
+  .zone-glow {
+    position: absolute;
+    top: -60px; left: 50%; transform: translateX(-50%);
+    width: 300px; height: 200px;
+    border-radius: 50%;
+    filter: blur(60px);
+    opacity: 0;
+    transition: background 0.4s ease, opacity 0.4s ease;
+    pointer-events: none;
+  }
+
+  .zone-label {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 4rem;
+    letter-spacing: 0.1em;
+    line-height: 1;
+    transition: color 0.4s ease;
+    position: relative;
+    z-index: 1;
+  }
+
+  .db-readout {
+    font-size: 0.75rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    position: relative;
+    z-index: 1;
+  }
+
+  .db-value {
+    font-size: 1.4rem;
+    color: var(--text);
+    margin-right: 4px;
+    transition: color 0.3s ease;
+  }
+
+  /* Animated bar meter */
+  .bar-meter {
+    width: 100%;
+    position: relative;
+    z-index: 1;
+  }
+
+  .bar-track {
+    width: 100%;
+    height: 28px;
+    background: var(--bg);
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    position: relative;
+  }
+
+  .bar-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 5px;
+    transition: width 0.08s ease-out, background 0.4s ease;
+    position: relative;
+  }
+
+  .bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 40%;
+    background: rgba(255,255,255,0.12);
+    border-radius: 4px 4px 0 0;
+  }
+
+  .bar-markers {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    padding: 0 2px;
+  }
+
+  .bar-marker {
+    font-size: 0.6rem;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+
+  /* Threshold sliders */
+  .thresholds {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .thresh-header {
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .thresh-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .thresh-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .thresh-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    width: 54px;
+    flex-shrink: 0;
+  }
+
+  .thresh-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 3px;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .thresh-slider.green { background: linear-gradient(to right, var(--green) var(--pct,50%), var(--border) var(--pct,50%)); }
+  .thresh-slider.amber { background: linear-gradient(to right, var(--amber) var(--pct,70%), var(--border) var(--pct,70%)); }
+
+  .thresh-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--text);
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 0 1px var(--muted);
+    cursor: pointer;
+    transition: box-shadow 0.2s;
+  }
+  .thresh-slider::-webkit-slider-thumb:hover { box-shadow: 0 0 0 3px rgba(255,255,255,0.15); }
+
+  .thresh-value {
+    font-size: 0.75rem;
+    width: 52px;
+    text-align: right;
+    color: var(--text);
+    flex-shrink: 0;
+  }
+
+  /* Start button */
+  .start-btn {
+    width: 100%;
+    padding: 14px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .start-btn:hover { background: var(--panel); border-color: var(--muted); }
+  .start-btn.active { border-color: var(--red); color: var(--red); }
+  .start-btn.active:hover { background: rgba(239,68,68,0.08); }
+
+  .embed-note {
+    font-size: 0.6rem;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 0.08em;
+    line-height: 1.7;
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+  }
+
+  /* Zone colour states */
+  .zone-green .zone-label { color: var(--green); }
+  .zone-green .zone-glow { background: var(--green); opacity: 0.18; }
+  .zone-green .bar-fill { background: var(--green); }
+  .zone-green .db-value { color: var(--green); }
+
+  .zone-amber .zone-label { color: var(--amber); }
+  .zone-amber .zone-glow { background: var(--amber); opacity: 0.18; }
+  .zone-amber .bar-fill { background: var(--amber); }
+  .zone-amber .db-value { color: var(--amber); }
+
+  .zone-red .zone-label { color: var(--red); }
+  .zone-red .zone-glow { background: var(--red); opacity: 0.22; }
+  .zone-red .bar-fill { background: var(--red); }
+  .zone-red .db-value { color: var(--red); }
+
+  .zone-idle .zone-label { color: var(--muted); }
+  .zone-idle .bar-fill { background: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="header">
+    <div class="title">Noise Meter</div>
+    <div class="status-pill" id="statusPill">Inactive</div>
+  </div>
+
+  <div class="zone-display zone-idle" id="zoneDisplay">
+    <div class="zone-glow" id="zoneGlow"></div>
+    <div class="zone-label" id="zoneLabel">QUIET</div>
+    <div class="bar-meter">
+      <div class="bar-track">
+        <div class="bar-fill" id="barFill"></div>
+      </div>
+      <div class="bar-markers">
+        <span class="bar-marker">0 dB</span>
+        <span class="bar-marker">25</span>
+        <span class="bar-marker">50</span>
+        <span class="bar-marker">75</span>
+        <span class="bar-marker">100 dB</span>
+      </div>
+    </div>
+    <div class="db-readout">
+      <span class="db-value" id="dbValue">—</span>
+      <span>dB</span>
+    </div>
+  </div>
+
+  <div class="thresholds">
+    <div class="thresh-header">Zone Thresholds</div>
+
+    <div class="thresh-row">
+      <div class="thresh-dot" style="background:var(--green)"></div>
+      <div class="thresh-label">Green ↑</div>
+      <input type="range" class="thresh-slider green" id="sliderGreen" min="0" max="100" value="40">
+      <div class="thresh-value" id="valGreen">40 dB</div>
+    </div>
+
+    <div class="thresh-row">
+      <div class="thresh-dot" style="background:var(--amber)"></div>
+      <div class="thresh-label">Amber ↑</div>
+      <input type="range" class="thresh-slider amber" id="sliderAmber" min="0" max="100" value="65">
+      <div class="thresh-value" id="valAmber">65 dB</div>
+    </div>
+  </div>
+
+  <button class="start-btn" id="startBtn" onclick="toggleMeter()">
+    ▶ Start Listening
+  </button>
+
+  <div class="embed-note">
+    Open as a browser tab alongside Google Slides — or share the URL full-screen on a second display.
+  </div>
+</div>
+
+<script>
+  let audioCtx, analyser, micStream, animFrame;
+  let running = false;
+
+  const zoneDisplay = document.getElementById('zoneDisplay');
+  const zoneLabel   = document.getElementById('zoneLabel');
+  const barFill     = document.getElementById('barFill');
+  const dbValue     = document.getElementById('dbValue');
+  const statusPill  = document.getElementById('statusPill');
+  const startBtn    = document.getElementById('startBtn');
+  const sliderGreen = document.getElementById('sliderGreen');
+  const sliderAmber = document.getElementById('sliderAmber');
+  const valGreen    = document.getElementById('valGreen');
+  const valAmber    = document.getElementById('valAmber');
+
+  let threshGreen = 40;
+  let threshAmber = 65;
+
+  function updateSlider(slider, valueEl, varName) {
+    const v = parseInt(slider.value);
+    const pct = v + '%';
+    slider.style.setProperty('--pct', pct);
+    valueEl.textContent = v + ' dB';
+    return v;
+  }
+
+  sliderGreen.addEventListener('input', () => {
+    threshGreen = updateSlider(sliderGreen, valGreen, '--green');
+    if (threshAmber <= threshGreen) {
+      threshAmber = threshGreen + 1;
+      sliderAmber.value = threshAmber;
+      updateSlider(sliderAmber, valAmber, '--amber');
+    }
+  });
+
+  sliderAmber.addEventListener('input', () => {
+    threshAmber = updateSlider(sliderAmber, valAmber, '--amber');
+    if (threshGreen >= threshAmber) {
+      threshGreen = threshAmber - 1;
+      sliderGreen.value = threshGreen;
+      updateSlider(sliderGreen, valGreen, '--green');
+    }
+  });
+
+  // Init slider visual state
+  updateSlider(sliderGreen, valGreen);
+  updateSlider(sliderAmber, valAmber);
+
+  async function toggleMeter() {
+    if (running) {
+      stopMeter();
+    } else {
+      await startMeter();
+    }
+  }
+
+  async function startMeter() {
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.6;
+      const source = audioCtx.createMediaStreamSource(micStream);
+      source.connect(analyser);
+
+      running = true;
+      startBtn.textContent = '■ Stop Listening';
+      startBtn.classList.add('active');
+      statusPill.textContent = 'Active';
+      statusPill.classList.add('active');
+
+      loop();
+    } catch(e) {
+      statusPill.textContent = 'No Mic';
+      statusPill.classList.add('error');
+      startBtn.textContent = '▶ Start Listening';
+    }
+  }
+
+  function stopMeter() {
+    running = false;
+    cancelAnimationFrame(animFrame);
+    if (micStream) micStream.getTracks().forEach(t => t.stop());
+    if (audioCtx) audioCtx.close();
+    startBtn.textContent = '▶ Start Listening';
+    startBtn.classList.remove('active');
+    statusPill.textContent = 'Inactive';
+    statusPill.classList.remove('active', 'error');
+    setZone('idle', 'QUIET', 0);
+    dbValue.textContent = '—';
+  }
+
+  const dataArray = new Uint8Array(128);
+  let smoothDb = 0;
+
+  function loop() {
+    animFrame = requestAnimationFrame(loop);
+    analyser.getByteFrequencyData(dataArray);
+
+    // RMS → approximate dB (0–100 range for display)
+    let sum = 0;
+    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i] * dataArray[i];
+    const rms = Math.sqrt(sum / dataArray.length);
+    const db = Math.min(100, Math.round(rms / 2.55)); // normalise 0–255 → 0–100
+
+    smoothDb = smoothDb * 0.75 + db * 0.25;
+    const displayDb = Math.round(smoothDb);
+
+    dbValue.textContent = displayDb;
+    barFill.style.width = displayDb + '%';
+
+    if (displayDb < threshGreen) {
+      setZone('green', 'QUIET', displayDb);
+    } else if (displayDb < threshAmber) {
+      setZone('amber', 'NOISY', displayDb);
+    } else {
+      setZone('red', 'TOO LOUD', displayDb);
+    }
+  }
+
+  let currentZone = '';
+  function setZone(zone, label, db) {
+    if (zone !== currentZone) {
+      zoneDisplay.className = 'zone-display zone-' + zone;
+      zoneLabel.textContent = label;
+      currentZone = zone;
+    }
+  }
+</script>
+</body>
+</html>
